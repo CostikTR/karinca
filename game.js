@@ -210,8 +210,363 @@
     }
 
     // ============================================================================
-    // GAME ENTITIES
+    // ACHIEVEMENT SYSTEM
     // ============================================================================
+
+    class AchievementSystem {
+        constructor() {
+            this.achievements = {
+                firstKill: {
+                    id: 'firstKill',
+                    name: 'First Blood',
+                    description: 'Defeat your first enemy',
+                    icon: '⚔️',
+                    unlocked: false,
+                    progress: 0,
+                    target: 1
+                },
+                flawlessLevel: {
+                    id: 'flawlessLevel',
+                    name: 'Untouchable',
+                    description: 'Complete a level without taking damage',
+                    icon: '🛡️',
+                    unlocked: false,
+                    progress: 0,
+                    target: 1
+                },
+                fiveKills: {
+                    id: 'fiveKills',
+                    name: 'Rampage',
+                    description: 'Defeat 5 enemies in a single level',
+                    icon: '💀',
+                    unlocked: false,
+                    progress: 0,
+                    target: 5
+                },
+                reachLevel10: {
+                    id: 'reachLevel10',
+                    name: 'Getting Started',
+                    description: 'Reach level 10',
+                    icon: '🎯',
+                    unlocked: false,
+                    progress: 0,
+                    target: 10
+                },
+                reachLevel50: {
+                    id: 'reachLevel50',
+                    name: 'Halfway There',
+                    description: 'Reach level 50',
+                    icon: '🌟',
+                    unlocked: false,
+                    progress: 0,
+                    target: 50
+                },
+                reachLevel99: {
+                    id: 'reachLevel99',
+                    name: 'Elite Player',
+                    description: 'Reach level 99',
+                    icon: '👑',
+                    unlocked: false,
+                    progress: 0,
+                    target: 99
+                },
+                collectPowerUps: {
+                    id: 'collectPowerUps',
+                    name: 'Power Collector',
+                    description: 'Collect 100 power-ups total',
+                    icon: '⚡',
+                    unlocked: false,
+                    progress: 0,
+                    target: 100
+                },
+                longSnake: {
+                    id: 'longSnake',
+                    name: 'Mega Snake',
+                    description: 'Reach a length of 100',
+                    icon: '🐍',
+                    unlocked: false,
+                    progress: 0,
+                    target: 100
+                }
+            };
+            
+            this.sessionStats = {
+                kills: 0,
+                powerUpsCollected: 0,
+                maxLengthThisLevel: 5,
+                damageThisLevel: false
+            };
+            
+            this.loadProgress();
+        }
+        
+        saveProgress() {
+            const data = {
+                achievements: this.achievements,
+                totalStats: {
+                    totalKills: this.getTotalStat('kills'),
+                    totalPowerUps: this.getTotalStat('powerUps'),
+                    maxLevel: this.getTotalStat('maxLevel'),
+                    maxLength: this.getTotalStat('maxLength')
+                }
+            };
+            localStorage.setItem('karinca_achievements', JSON.stringify(data));
+        }
+        
+        loadProgress() {
+            try {
+                const data = JSON.parse(localStorage.getItem('karinca_achievements'));
+                if (data && data.achievements) {
+                    // Merge saved achievements with defaults
+                    Object.keys(this.achievements).forEach(key => {
+                        if (data.achievements[key]) {
+                            this.achievements[key] = { ...this.achievements[key], ...data.achievements[key] };
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn('Failed to load achievement progress:', e);
+            }
+        }
+        
+        getTotalStat(stat) {
+            try {
+                const data = JSON.parse(localStorage.getItem('karinca_achievements'));
+                return data?.totalStats?.[stat] || 0;
+            } catch (e) {
+                return 0;
+            }
+        }
+        
+        unlock(achievementId) {
+            const achievement = this.achievements[achievementId];
+            if (achievement && !achievement.unlocked) {
+                achievement.unlocked = true;
+                achievement.progress = achievement.target;
+                this.showToast(achievement);
+                this.saveProgress();
+                
+                // Add XP bonus for achievement
+                gameState.xp += 50;
+                gameState.totalXP += 50;
+                
+                console.log(`Achievement unlocked: ${achievement.name}`);
+            }
+        }
+        
+        updateProgress(achievementId, amount = 1) {
+            const achievement = this.achievements[achievementId];
+            if (achievement && !achievement.unlocked) {
+                achievement.progress = Math.min(achievement.progress + amount, achievement.target);
+                if (achievement.progress >= achievement.target) {
+                    this.unlock(achievementId);
+                }
+                this.saveProgress();
+            }
+        }
+        
+        showToast(achievement) {
+            const toast = document.getElementById('achievementToast');
+            const title = document.getElementById('toastAchievement');
+            
+            title.textContent = achievement.name;
+            toast.classList.remove('hidden');
+            toast.classList.add('show');
+            
+            // Hide after 4 seconds
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    toast.classList.add('hidden');
+                }, 500);
+            }, 4000);
+        }
+        
+        checkKill() {
+            this.sessionStats.kills++;
+            this.updateProgress('firstKill');
+            this.updateProgress('fiveKills');
+        }
+        
+        checkPowerUpCollected() {
+            this.sessionStats.powerUpsCollected++;
+            this.updateProgress('collectPowerUps');
+        }
+        
+        checkLength(length) {
+            this.sessionStats.maxLengthThisLevel = Math.max(this.sessionStats.maxLengthThisLevel, length);
+            this.updateProgress('longSnake', 0); // Just check current progress
+            if (length >= 100) {
+                this.updateProgress('longSnake', length - this.achievements.longSnake.progress);
+            }
+        }
+        
+        checkLevelComplete(level) {
+            this.updateProgress('reachLevel10', level >= 10 ? 1 : 0);
+            this.updateProgress('reachLevel50', level >= 50 ? 1 : 0);
+            this.updateProgress('reachLevel99', level >= 99 ? 1 : 0);
+            
+            if (!this.sessionStats.damageThisLevel) {
+                this.updateProgress('flawlessLevel');
+            }
+            
+            // Reset session stats for next level
+            this.sessionStats.kills = 0;
+            this.sessionStats.damageThisLevel = false;
+            this.sessionStats.maxLengthThisLevel = 5;
+        }
+        
+        checkDamage() {
+            this.sessionStats.damageThisLevel = true;
+        }
+        
+        getUnlockedCount() {
+            return Object.values(this.achievements).filter(a => a.unlocked).length;
+        }
+    }
+
+    // ============================================================================
+    // META PROGRESSION SYSTEM
+    // ============================================================================
+
+    class MetaProgression {
+        constructor() {
+            this.upgrades = {
+                startLength: {
+                    id: 'startLength',
+                    name: 'Starting Length',
+                    description: 'Increase starting snake length',
+                    baseValue: 5,
+                    increment: 1,
+                    baseCost: 100,
+                    costMultiplier: 1.5,
+                    maxLevel: 10,
+                    currentLevel: 0,
+                    icon: '📏'
+                },
+                baseSpeed: {
+                    id: 'baseSpeed',
+                    name: 'Base Speed',
+                    description: 'Increase movement speed',
+                    baseValue: 1,
+                    increment: 0.05,
+                    baseCost: 150,
+                    costMultiplier: 1.6,
+                    maxLevel: 15,
+                    currentLevel: 0,
+                    icon: '💨'
+                },
+                sprintEfficiency: {
+                    id: 'sprintEfficiency',
+                    name: 'Sprint Efficiency',
+                    description: 'Reduce length drain while sprinting',
+                    baseValue: 1,
+                    increment: 0.1,
+                    baseCost: 200,
+                    costMultiplier: 1.7,
+                    maxLevel: 8,
+                    currentLevel: 0,
+                    icon: '🏃'
+                },
+                foodValue: {
+                    id: 'foodValue',
+                    name: 'Food Value',
+                    description: 'Increase growth from food',
+                    baseValue: 1,
+                    increment: 0.05,
+                    baseCost: 120,
+                    costMultiplier: 1.4,
+                    maxLevel: 12,
+                    currentLevel: 0,
+                    icon: '🍎'
+                }
+            };
+            
+            this.xp = 0;
+            this.loadProgress();
+        }
+        
+        saveProgress() {
+            const data = {
+                upgrades: this.upgrades,
+                xp: this.xp
+            };
+            localStorage.setItem('karinca_progression', JSON.stringify(data));
+        }
+        
+        loadProgress() {
+            try {
+                const data = JSON.parse(localStorage.getItem('karinca_progression'));
+                if (data) {
+                    if (data.upgrades) {
+                        Object.keys(this.upgrades).forEach(key => {
+                            if (data.upgrades[key]) {
+                                this.upgrades[key].currentLevel = data.upgrades[key].currentLevel || 0;
+                            }
+                        });
+                    }
+                    this.xp = data.xp || 0;
+                }
+            } catch (e) {
+                console.warn('Failed to load progression data:', e);
+            }
+        }
+        
+        getCost(upgradeId) {
+            const upgrade = this.upgrades[upgradeId];
+            return Math.floor(upgrade.baseCost * Math.pow(upgrade.costMultiplier, upgrade.currentLevel));
+        }
+        
+        canAfford(upgradeId) {
+            return this.xp >= this.getCost(upgradeId);
+        }
+        
+        isMaxLevel(upgradeId) {
+            const upgrade = this.upgrades[upgradeId];
+            return upgrade.currentLevel >= upgrade.maxLevel;
+        }
+        
+        buyUpgrade(upgradeId) {
+            const upgrade = this.upgrades[upgradeId];
+            const cost = this.getCost(upgradeId);
+            
+            if (this.canAfford(upgradeId) && !this.isMaxLevel(upgradeId)) {
+                this.xp -= cost;
+                upgrade.currentLevel++;
+                this.saveProgress();
+                return true;
+            }
+            return false;
+        }
+        
+        getCurrentValue(upgradeId) {
+            const upgrade = this.upgrades[upgradeId];
+            return upgrade.baseValue + (upgrade.increment * upgrade.currentLevel);
+        }
+        
+        // Getter methods for game systems
+        getStartLength() {
+            return Math.floor(this.getCurrentValue('startLength'));
+        }
+        
+        getSpeedMultiplier() {
+            return this.getCurrentValue('baseSpeed');
+        }
+        
+        getSprintEfficiency() {
+            return Math.max(0.1, 1 - (this.upgrades.sprintEfficiency.currentLevel * 0.1));
+        }
+        
+        getFoodValueMultiplier() {
+            return this.getCurrentValue('foodValue');
+        }
+        
+        addXP(amount) {
+            this.xp += amount;
+            gameState.totalXP += amount;
+            this.saveProgress();
+        }
+    }
 
     class Snake {
         constructor(x, y, isPlayer = false) {
@@ -361,6 +716,11 @@
         grow(amount = 1) {
             const baseGrowth = amount * metaProgression.getFoodValueMultiplier();
             this.length += baseGrowth;
+            
+            // Achievement: check length milestone
+            if (this.isPlayer) {
+                achievementSystem.checkLength(this.length);
+            }
         }
         
         kill() {
@@ -379,11 +739,17 @@
                 addHitPause(GAME_CONFIG.HIT_PAUSE.KILL);
                 playSound('death');
                 
+                // Achievement: player took damage
+                achievementSystem.checkDamage();
+                
                 // Create dramatic death particles
                 createParticles(this.segments[0].x, this.segments[0].y, '#ff4444', 20);
             } else {
                 addScreenShake(GAME_CONFIG.SCREEN_SHAKE.KILL * 0.5, 250);
                 playSound('kill');
+                
+                // Achievement: enemy kill
+                achievementSystem.checkKill();
                 
                 // Create enemy death particles
                 createParticles(this.segments[0].x, this.segments[0].y, '#ffaa00', 15);
@@ -780,19 +1146,15 @@
     }
     
     function initGameSystems() {
-        // Achievement system will be implemented in Phase 4
-        achievementSystem = {
-            achievements: {},
-            unlock: function(id) { console.log(`Achievement unlocked: ${id}`); }
-        };
+        // Initialize achievement system
+        achievementSystem = new AchievementSystem();
         
-        // Meta progression system will be implemented in Phase 4
-        metaProgression = {
-            getSpeedMultiplier: () => 1,
-            getFoodValueMultiplier: () => 1,
-            getSprintEfficiency: () => 1,
-            getStartLength: () => 5
-        };
+        // Initialize meta progression system
+        metaProgression = new MetaProgression();
+        
+        // Sync XP with meta progression
+        gameState.totalXP = metaProgression.xp;
+        gameState.xp = metaProgression.xp;
     }
     
     function initObjectPools() {
@@ -906,12 +1268,33 @@
     }
     
     function initUI() {
-        // UI event listeners will be implemented in later phases
+        // Main menu buttons
         document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('achievementsBtn').addEventListener('click', () => showAchievements());
+        document.getElementById('upgradesBtn').addEventListener('click', () => showUpgrades());
+        document.getElementById('settingsStartBtn').addEventListener('click', () => showOverlay('settingsScreen'));
+        
+        // Game control buttons
         document.getElementById('pauseBtn').addEventListener('click', togglePause);
         document.getElementById('resumeBtn').addEventListener('click', togglePause);
         document.getElementById('retryBtn').addEventListener('click', startGame);
         document.getElementById('nextLevelBtn').addEventListener('click', nextLevel);
+        document.getElementById('mainMenuBtn').addEventListener('click', () => showOverlay('startScreen'));
+        document.getElementById('mainMenuGameOverBtn').addEventListener('click', () => showOverlay('startScreen'));
+        
+        // Overlay close buttons
+        document.getElementById('closeAchievementsBtn').addEventListener('click', () => showOverlay('startScreen'));
+        document.getElementById('closeUpgradesBtn').addEventListener('click', () => showOverlay('startScreen'));
+        document.getElementById('closeSettingsBtn').addEventListener('click', () => showOverlay('startScreen'));
+        
+        // Level complete/game over upgrade buttons
+        document.getElementById('upgradesCompleteBtn').addEventListener('click', () => showUpgrades());
+        document.getElementById('upgradesGameOverBtn').addEventListener('click', () => showUpgrades());
+        
+        // Settings change handlers
+        document.getElementById('audioVolume').addEventListener('change', (e) => {
+            audioSettings.volume = e.target.value / 100;
+        });
     }
     
     function resizeCanvas() {
@@ -1240,6 +1623,9 @@
             if (powerUp.checkCollision(player)) {
                 player.addPowerUp(powerUp.type, powerUp.config.duration);
                 
+                // Achievement: power-up collected
+                achievementSystem.checkPowerUpCollected();
+                
                 // Enhanced power-up effects
                 addScreenShake(GAME_CONFIG.SCREEN_SHAKE.POWER_UP, 250);
                 addHitPause(GAME_CONFIG.HIT_PAUSE.POWER_UP);
@@ -1497,10 +1883,20 @@
     function completeLevel() {
         gameState.current = 'levelComplete';
         const levelTime = (Date.now() - gameState.levelTime) / 1000;
-        const xpEarned = Math.floor(100 + gameState.level * 10 + player.length);
+        const baseXP = 100 + gameState.level * 10 + player.length;
+        let xpEarned = Math.floor(baseXP);
+        
+        // Bonus XP for fast completion
+        if (levelTime < 30) {
+            xpEarned = Math.floor(xpEarned * 1.5);
+        }
         
         gameState.xp += xpEarned;
         gameState.totalXP += xpEarned;
+        metaProgression.addXP(xpEarned);
+        
+        // Achievement checks
+        achievementSystem.checkLevelComplete(gameState.level);
         
         // Celebration effects
         addScreenShake(8, 500);
@@ -1558,7 +1954,7 @@
         
         // Update UI
         document.getElementById('finalTotalXP').textContent = gameState.totalXP;
-        document.getElementById('finalAchievements').textContent = Object.keys(achievementSystem.achievements).length;
+        document.getElementById('finalAchievements').textContent = achievementSystem.getUnlockedCount();
         
         showOverlay('gameCompleteScreen');
     }
@@ -1592,6 +1988,96 @@
         document.getElementById('lengthDisplay').textContent = player ? Math.floor(player.length) : 0;
         document.getElementById('livesDisplay').textContent = gameState.lives;
     }
+    
+    function showAchievements() {
+        const container = document.getElementById('achievementsList');
+        container.innerHTML = '';
+        
+        Object.values(achievementSystem.achievements).forEach(achievement => {
+            const div = document.createElement('div');
+            div.className = `achievement-item ${achievement.unlocked ? 'unlocked' : ''}`;
+            
+            const progress = achievement.unlocked ? achievement.target : achievement.progress;
+            const progressText = achievement.target > 1 ? ` (${progress}/${achievement.target})` : '';
+            
+            div.innerHTML = `
+                <span class="achievement-icon">${achievement.icon}</span>
+                <div class="achievement-info">
+                    <div class="achievement-name">${achievement.name}${progressText}</div>
+                    <div class="achievement-desc">${achievement.description}</div>
+                </div>
+            `;
+            
+            container.appendChild(div);
+        });
+        
+        showOverlay('achievementsScreen');
+    }
+    
+    function showUpgrades() {
+        updateUpgradesUI();
+        showOverlay('upgradesScreen');
+    }
+    
+    function updateUpgradesUI() {
+        const container = document.getElementById('upgradesList');
+        const xpDisplay = document.getElementById('currentXP');
+        
+        // Sync XP display with both game state and meta progression
+        const currentXP = Math.max(gameState.xp, metaProgression.xp);
+        xpDisplay.textContent = currentXP;
+        container.innerHTML = '';
+        
+        Object.values(metaProgression.upgrades).forEach(upgrade => {
+            const div = document.createElement('div');
+            div.className = 'upgrade-item';
+            
+            const cost = metaProgression.getCost(upgrade.id);
+            const currentValue = metaProgression.getCurrentValue(upgrade.id);
+            const nextValue = upgrade.baseValue + (upgrade.increment * (upgrade.currentLevel + 1));
+            const isMaxLevel = metaProgression.isMaxLevel(upgrade.id);
+            const canAfford = currentXP >= cost;
+            
+            let buttonContent;
+            if (isMaxLevel) {
+                buttonContent = '<button class="upgrade-btn" disabled>MAX</button>';
+            } else if (!canAfford) {
+                buttonContent = `<button class="upgrade-btn" disabled>Need ${cost} XP</button>`;
+            } else {
+                buttonContent = `<button class="upgrade-btn" onclick="buyUpgrade('${upgrade.id}')">Buy (${cost} XP)</button>`;
+            }
+            
+            let valueDisplay;
+            if (upgrade.id === 'startLength') {
+                valueDisplay = `${Math.floor(currentValue)}`;
+            } else if (upgrade.id === 'baseSpeed') {
+                valueDisplay = `+${Math.floor((currentValue - 1) * 100)}%`;
+            } else if (upgrade.id === 'sprintEfficiency') {
+                valueDisplay = `${Math.floor((1 - metaProgression.getSprintEfficiency()) * 100)}% less drain`;
+            } else if (upgrade.id === 'foodValue') {
+                valueDisplay = `+${Math.floor((currentValue - 1) * 100)}%`;
+            }
+            
+            div.innerHTML = `
+                <div class="upgrade-info">
+                    <div class="upgrade-name">${upgrade.icon} ${upgrade.name}</div>
+                    <div class="upgrade-desc">${upgrade.description}</div>
+                    <div class="upgrade-level">Level ${upgrade.currentLevel}/${upgrade.maxLevel} - ${valueDisplay}</div>
+                </div>
+                ${buttonContent}
+            `;
+            
+            container.appendChild(div);
+        });
+    }
+    
+    // Global function for upgrade buttons
+    window.buyUpgrade = function(upgradeId) {
+        if (metaProgression.buyUpgrade(upgradeId)) {
+            updateUpgradesUI();
+            playSound('powerup'); // Reuse power-up sound for purchase
+        }
+    };
     
     function updatePowerUpUI() {
         const container = document.getElementById('powerUpTimers');
