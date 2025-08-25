@@ -100,6 +100,9 @@ body {
     text-align: center;
     position: relative;
     overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 5px;
 }
 
 .power-up-timer .timer-bg {
@@ -112,10 +115,24 @@ body {
     z-index: -1;
 }
 
+.power-up-timer .timer-icon {
+    font-size: 16px;
+}
+
+.power-up-timer .timer-text {
+    font-weight: bold;
+    font-size: 12px;
+}
+
 .power-up-timer.shield { border-color: #4fc3f7; }
 .power-up-timer.magnet { border-color: #ffeb3b; }
 .power-up-timer.speed { border-color: #4caf50; }
 .power-up-timer.invisibility { border-color: #9e9e9e; }
+
+@keyframes pulse {
+    from { transform: scale(1); }
+    to { transform: scale(1.05); }
+}
 
 /* Leaderboard */
 .leaderboard {

@@ -37,8 +37,8 @@
         ZOOM_EASING: 0.1,
         
         // Power-ups
-        POWER_UP_SPAWN_INTERVAL: 8000, // ms
-        MAX_POWER_UPS: 2,
+        POWER_UP_SPAWN_INTERVAL: 6000, // ms (reduced for testing)
+        MAX_POWER_UPS: 3, // Increased for better gameplay
         
         // Spatial hashing
         SPATIAL_CELL_SIZE: 100,
@@ -273,9 +273,13 @@
                 effectiveSpeed *= metaProgression.getSpeedMultiplier();
                 if (this.isSprinting) {
                     effectiveSpeed *= GAME_CONFIG.SPRINT_SPEED_MULTIPLIER;
-                    // Drain length while sprinting
-                    const drainRate = GAME_CONFIG.SPRINT_LENGTH_DRAIN * metaProgression.getSprintEfficiency();
-                    this.length = Math.max(3, this.length - drainRate * (deltaTime / 1000));
+                    
+                    // Check if player has speed burst power-up
+                    if (!this.powerUps.has('speed')) {
+                        // Drain length while sprinting (only if no speed burst)
+                        const drainRate = GAME_CONFIG.SPRINT_LENGTH_DRAIN * metaProgression.getSprintEfficiency();
+                        this.length = Math.max(3, this.length - drainRate * (deltaTime / 1000));
+                    }
                 }
             }
             
@@ -577,6 +581,11 @@
                 this.spawnPowerUp();
                 this.spawnTimer = 0;
             }
+            
+            // Apply magnet effect for players with magnet power-up
+            if (player && !player.isDead && player.powerUps.has('magnet')) {
+                this.magnetEffect(player);
+            }
         }
         
         spawnPowerUp() {
@@ -604,11 +613,38 @@
             switch (type) {
                 case 'magnet':
                     // Magnet effect will be handled in the update loop
+                    this.magnetEffect(snake);
+                    break;
+                case 'shield':
+                    // Visual shield effect
+                    break;
+                case 'speed':
+                    // Speed boost handled in snake update
                     break;
                 case 'invisibility':
                     // Invisibility effects are handled in collision detection
                     break;
             }
+        }
+        
+        magnetEffect(snake) {
+            // Pull nearby food towards the player
+            const magnetRadius = 120;
+            const magnetForce = 300; // pixels per second
+            
+            foods.forEach(food => {
+                const distance = Vector2.distance(food, snake.segments[0]);
+                if (distance < magnetRadius && distance > 20) {
+                    const direction = Vector2.normalize({
+                        x: snake.segments[0].x - food.x,
+                        y: snake.segments[0].y - food.y
+                    });
+                    
+                    const force = magnetForce / Math.max(distance, 30);
+                    food.x += direction.x * force * (1/60); // Assume 60fps
+                    food.y += direction.y * force * (1/60);
+                }
+            });
         }
         
         onPowerUpExpired(snake, type) {
@@ -635,25 +671,63 @@
         draw(ctx) {
             ctx.save();
             
-            const glow = 1 + 0.3 * Math.sin(this.glowPhase);
-            const bob = Math.sin(this.bobPhase) * 5;
+            const glow = 1 + 0.4 * Math.sin(this.glowPhase);
+            const bob = Math.sin(this.bobPhase) * 8;
             
-            // Glow effect
+            // Enhanced glow effect
             ctx.shadowColor = this.config.color;
-            ctx.shadowBlur = 20 * glow;
+            ctx.shadowBlur = 25 * glow;
             
-            // Main shape
-            ctx.fillStyle = this.config.color;
+            // Outer glow ring
+            ctx.strokeStyle = this.config.color;
+            ctx.lineWidth = 3;
+            ctx.globalAlpha = 0.3 * glow;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y + bob, this.size * 0.8, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Main shape with gradient
+            ctx.globalAlpha = 1;
+            const gradient = ctx.createRadialGradient(this.x, this.y + bob, 0, this.x, this.y + bob, this.size / 2);
+            gradient.addColorStop(0, this.config.color);
+            gradient.addColorStop(1, this.config.color + '80'); // Semi-transparent
+            
+            ctx.fillStyle = gradient;
             ctx.beginPath();
             ctx.arc(this.x, this.y + bob, this.size / 2, 0, Math.PI * 2);
             ctx.fill();
             
-            // Icon
+            // Icon with shadow
+            ctx.shadowColor = '#000';
+            ctx.shadowBlur = 5;
             ctx.font = `${this.size * 0.6}px Arial`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#000';
+            ctx.fillStyle = '#fff';
             ctx.fillText(this.config.icon, this.x, this.y + bob);
+            
+            // Type-specific effects
+            if (this.type === 'magnet') {
+                // Draw magnet field lines
+                ctx.globalAlpha = 0.2 * glow;
+                ctx.strokeStyle = this.config.color;
+                ctx.lineWidth = 2;
+                for (let i = 0; i < 6; i++) {
+                    const angle = (i / 6) * Math.PI * 2 + this.glowPhase * 0.5;
+                    const startRadius = this.size * 0.7;
+                    const endRadius = this.size * 1.2;
+                    ctx.beginPath();
+                    ctx.moveTo(
+                        this.x + Math.cos(angle) * startRadius,
+                        this.y + bob + Math.sin(angle) * startRadius
+                    );
+                    ctx.lineTo(
+                        this.x + Math.cos(angle) * endRadius,
+                        this.y + bob + Math.sin(angle) * endRadius
+                    );
+                    ctx.stroke();
+                }
+            }
             
             ctx.restore();
         }
@@ -921,6 +995,9 @@
             createFood();
         }
         
+        // Spawn a test power-up for demonstration
+        powerUpSystem.spawnPowerUp();
+        
         gameState.levelTime = Date.now();
     }
     
@@ -1039,6 +1116,9 @@
         
         // Update systems
         powerUpSystem.update(deltaTime);
+        
+        // Update UI
+        updatePowerUpUI();
         
         // Update camera
         updateCamera(deltaTime);
@@ -1517,19 +1597,34 @@
         const container = document.getElementById('powerUpTimers');
         container.innerHTML = '';
         
-        if (player) {
+        if (player && player.powerUps.size > 0) {
             player.powerUps.forEach((powerUp, type) => {
+                const config = powerUpSystem.types[type];
+                const timeLeft = Math.ceil(powerUp.timeLeft / 1000);
+                const percentage = (powerUp.timeLeft / config.duration) * 100;
+                
                 const div = document.createElement('div');
                 div.className = `power-up-timer ${type}`;
                 
-                const timeLeft = Math.ceil(powerUp.timeLeft / 1000);
                 div.innerHTML = `
-                    <div class="timer-bg" style="width: ${(powerUp.timeLeft / powerUpSystem.types[type].duration) * 100}%"></div>
-                    ${powerUpSystem.types[type].icon} ${timeLeft}s
+                    <div class="timer-bg" style="width: ${percentage}%"></div>
+                    <span class="timer-icon">${config.icon}</span>
+                    <span class="timer-text">${timeLeft}s</span>
                 `;
+                
+                // Add pulsing effect when time is running low
+                if (timeLeft <= 3) {
+                    div.style.animation = 'pulse 0.5s infinite alternate';
+                }
                 
                 container.appendChild(div);
             });
+            
+            // Show the power-up container
+            container.style.display = 'flex';
+        } else {
+            // Hide the power-up container when no power-ups are active
+            container.style.display = 'none';
         }
     }
     
