@@ -87,6 +87,10 @@
     let hitPauseTimer = 0;
     let fixedTimeStep = 1000 / GAME_CONFIG.TARGET_FPS;
     
+    // Game feel effects
+    let screenShake = { x: 0, y: 0, intensity: 0, duration: 0 };
+    let timeScale = 1.0;
+    
     // Systems
     let achievementSystem, metaProgression, powerUpSystem, aiSystem;
 
@@ -365,14 +369,20 @@
                 createFood(segment.x, segment.y, 'death');
             });
             
-            // Screen effects
+            // Enhanced death effects
             if (this.isPlayer) {
-                addScreenShake(GAME_CONFIG.SCREEN_SHAKE.KILL);
+                addScreenShake(GAME_CONFIG.SCREEN_SHAKE.KILL, 400);
                 addHitPause(GAME_CONFIG.HIT_PAUSE.KILL);
                 playSound('death');
+                
+                // Create dramatic death particles
+                createParticles(this.segments[0].x, this.segments[0].y, '#ff4444', 20);
             } else {
-                addScreenShake(GAME_CONFIG.SCREEN_SHAKE.KILL * 0.5);
+                addScreenShake(GAME_CONFIG.SCREEN_SHAKE.KILL * 0.5, 250);
                 playSound('kill');
+                
+                // Create enemy death particles
+                createParticles(this.segments[0].x, this.segments[0].y, '#ffaa00', 15);
             }
         }
         
@@ -943,11 +953,19 @@
         let deltaTime = Math.min(currentTime - lastTime, GAME_CONFIG.MAX_DELTA_TIME);
         lastTime = currentTime;
         
-        // Handle hit pause
+        // Handle hit pause effect
         if (hitPauseTimer > 0) {
             hitPauseTimer -= deltaTime;
-            deltaTime *= 0.1; // Slow down time during hit pause
+            timeScale = 0.1; // Slow down time during hit pause
+        } else {
+            timeScale = 1.0;
         }
+        
+        // Apply time scale to delta time
+        deltaTime *= timeScale;
+        
+        // Update screen shake
+        updateScreenShake(deltaTime);
         
         // Fixed timestep update
         accumulator += deltaTime;
@@ -1007,6 +1025,15 @@
             particle.life -= deltaTime;
             particle.x += particle.vx * (deltaTime / 1000);
             particle.y += particle.vy * (deltaTime / 1000);
+            
+            // Apply gravity if present
+            if (particle.gravity) {
+                particle.vy += particle.gravity * (deltaTime / 1000);
+            }
+            
+            // Add some drag
+            particle.vx *= 0.98;
+            particle.vy *= 0.98;
         });
         particles = particles.filter(p => p.life > 0);
         
@@ -1062,24 +1089,35 @@
         
         const head = player.segments[0];
         
-        // Follow player
-        camera.x = head.x - canvas.width / 2;
-        camera.y = head.y - canvas.height / 2;
+        // Follow player smoothly
+        const targetX = head.x - canvas.width / 2;
+        const targetY = head.y - canvas.height / 2;
         
-        // Sprint zoom
-        camera.targetScale = player.isSprinting ? GAME_CONFIG.SPRINT_ZOOM_SCALE : 1;
-        camera.scale += (camera.targetScale - camera.scale) * GAME_CONFIG.ZOOM_EASING;
+        camera.x += (targetX - camera.x) * 0.1;
+        camera.y += (targetY - camera.y) * 0.1;
         
-        // Screen shake
-        if (camera.shake.intensity > 0) {
-            camera.shake.x = (Math.random() - 0.5) * camera.shake.intensity;
-            camera.shake.y = (Math.random() - 0.5) * camera.shake.intensity;
-            camera.shake.intensity *= 0.9;
+        // Sprint zoom effect
+        const targetScale = player.isSprinting ? GAME_CONFIG.SPRINT_ZOOM_SCALE : 1;
+        camera.scale += (targetScale - camera.scale) * GAME_CONFIG.ZOOM_EASING;
+        
+        // Apply screen shake to camera
+        camera.shake.x = screenShake.x;
+        camera.shake.y = screenShake.y;
+    }
+    
+    function updateScreenShake(deltaTime) {
+        if (screenShake.intensity > 0) {
+            screenShake.duration -= deltaTime;
             
-            if (camera.shake.intensity < 0.1) {
-                camera.shake.intensity = 0;
-                camera.shake.x = 0;
-                camera.shake.y = 0;
+            if (screenShake.duration <= 0) {
+                screenShake.intensity = 0;
+                screenShake.x = 0;
+                screenShake.y = 0;
+            } else {
+                // Generate random shake offset
+                const shakeAmount = screenShake.intensity * (screenShake.duration / 300); // Fade over 300ms
+                screenShake.x = (Math.random() - 0.5) * shakeAmount;
+                screenShake.y = (Math.random() - 0.5) * shakeAmount;
             }
         }
     }
@@ -1093,9 +1131,20 @@
                 player.grow(food.value);
                 gameState.score += food.value * 10;
                 
-                // Effects
-                addScreenShake(GAME_CONFIG.SCREEN_SHAKE.FOOD);
-                addHitPause(GAME_CONFIG.HIT_PAUSE.FOOD);
+                // Enhanced effects based on food type
+                let shakeIntensity = GAME_CONFIG.SCREEN_SHAKE.FOOD;
+                let pauseDuration = GAME_CONFIG.HIT_PAUSE.FOOD;
+                
+                if (food.type === 'bonus') {
+                    shakeIntensity *= 1.5;
+                    pauseDuration *= 1.5;
+                } else if (food.type === 'death') {
+                    shakeIntensity *= 0.8;
+                    pauseDuration *= 0.8;
+                }
+                
+                addScreenShake(shakeIntensity, 200);
+                addHitPause(pauseDuration);
                 playSound('eat');
                 
                 // Create particles
@@ -1111,12 +1160,12 @@
             if (powerUp.checkCollision(player)) {
                 player.addPowerUp(powerUp.type, powerUp.config.duration);
                 
-                // Effects
-                addScreenShake(GAME_CONFIG.SCREEN_SHAKE.POWER_UP);
+                // Enhanced power-up effects
+                addScreenShake(GAME_CONFIG.SCREEN_SHAKE.POWER_UP, 250);
                 addHitPause(GAME_CONFIG.HIT_PAUSE.POWER_UP);
                 playSound('powerup');
                 
-                createParticles(powerUp.x, powerUp.y, powerUp.config.color, 8);
+                createParticles(powerUp.x, powerUp.y, powerUp.config.color, 12);
                 
                 powerUps.splice(index, 1);
                 updatePowerUpUI();
@@ -1245,24 +1294,38 @@
     // UTILITY FUNCTIONS
     // ============================================================================
     
-    function addScreenShake(intensity) {
-        camera.shake.intensity = Math.max(camera.shake.intensity, intensity);
+    function addScreenShake(intensity, duration = 300) {
+        screenShake.intensity = Math.max(screenShake.intensity, intensity);
+        screenShake.duration = Math.max(screenShake.duration, duration);
     }
     
     function addHitPause(duration) {
         hitPauseTimer = Math.max(hitPauseTimer, duration);
     }
     
-    function createParticles(x, y, color, count) {
+    function createParticles(x, y, color, count, options = {}) {
+        const {
+            speed = 200,
+            spread = Math.PI * 2,
+            life = 1000,
+            size = 2,
+            gravity = 0
+        } = options;
+        
         for (let i = 0; i < count; i++) {
             const particle = objectPools.particles.get();
-            particle.x = x;
-            particle.y = y;
-            particle.vx = (Math.random() - 0.5) * 200;
-            particle.vy = (Math.random() - 0.5) * 200;
-            particle.life = particle.maxLife;
+            particle.x = x + (Math.random() - 0.5) * 10;
+            particle.y = y + (Math.random() - 0.5) * 10;
+            
+            const angle = Math.random() * spread;
+            const velocity = speed * (0.5 + Math.random() * 0.5);
+            particle.vx = Math.cos(angle) * velocity;
+            particle.vy = Math.sin(angle) * velocity;
+            
+            particle.life = particle.maxLife = life * (0.8 + Math.random() * 0.4);
             particle.color = color;
-            particle.size = 2 + Math.random() * 3;
+            particle.size = size + Math.random() * 3;
+            particle.gravity = gravity;
             particles.push(particle);
         }
         
@@ -1274,7 +1337,7 @@
     }
     
     function playSound(type) {
-        if (!audioContext) return;
+        if (!audioContext || audioSettings.volume === 0) return;
         
         try {
             const oscillator = audioContext.createOscillator();
@@ -1283,31 +1346,61 @@
             oscillator.connect(gainNode);
             gainNode.connect(audioContext.destination);
             
-            let frequency, duration;
+            let frequency, duration, waveType = 'square';
+            const baseVolume = audioSettings.volume * 0.1;
+            
             switch (type) {
                 case 'eat':
-                    frequency = 440;
-                    duration = 0.1;
+                    frequency = 660;
+                    duration = 0.15;
+                    waveType = 'sine';
+                    // Add frequency sweep for more appealing sound
+                    oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(frequency * 1.5, audioContext.currentTime + 0.05);
                     break;
                 case 'powerup':
-                    frequency = 660;
-                    duration = 0.2;
+                    frequency = 880;
+                    duration = 0.3;
+                    waveType = 'square';
+                    // Power-up chord progression
+                    oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+                    oscillator.frequency.setValueAtTime(frequency * 1.25, audioContext.currentTime + 0.1);
+                    oscillator.frequency.setValueAtTime(frequency * 1.5, audioContext.currentTime + 0.2);
                     break;
                 case 'kill':
                     frequency = 220;
-                    duration = 0.3;
+                    duration = 0.4;
+                    waveType = 'sawtooth';
+                    // Descending sound for enemy death
+                    oscillator.frequency.setValueAtTime(frequency * 2, audioContext.currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(frequency, audioContext.currentTime + duration);
                     break;
                 case 'death':
                     frequency = 110;
+                    duration = 0.8;
+                    waveType = 'square';
+                    // Dramatic death sound
+                    oscillator.frequency.setValueAtTime(frequency * 3, audioContext.currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(frequency, audioContext.currentTime + duration);
+                    break;
+                case 'levelup':
+                    frequency = 523; // C5
                     duration = 0.5;
+                    waveType = 'sine';
+                    // Victory fanfare
+                    oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+                    oscillator.frequency.setValueAtTime(frequency * 1.33, audioContext.currentTime + 0.1); // F5
+                    oscillator.frequency.setValueAtTime(frequency * 1.5, audioContext.currentTime + 0.2); // G5
+                    oscillator.frequency.setValueAtTime(frequency * 2, audioContext.currentTime + 0.3); // C6
                     break;
                 default:
-                    frequency = 330;
+                    frequency = 440;
                     duration = 0.1;
+                    waveType = 'sine';
             }
             
-            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
-            gainNode.gain.setValueAtTime(audioSettings.volume * 0.1, audioContext.currentTime);
+            oscillator.type = waveType;
+            gainNode.gain.setValueAtTime(baseVolume, audioContext.currentTime);
             gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
             
             oscillator.start(audioContext.currentTime);
@@ -1328,6 +1421,24 @@
         
         gameState.xp += xpEarned;
         gameState.totalXP += xpEarned;
+        
+        // Celebration effects
+        addScreenShake(8, 500);
+        playSound('levelup');
+        
+        // Create celebration particles around player
+        if (player && !player.isDead) {
+            createParticles(player.segments[0].x, player.segments[0].y, '#ffeb3b', 30, {
+                speed: 300,
+                life: 2000,
+                size: 4
+            });
+            createParticles(player.segments[0].x, player.segments[0].y, '#4caf50', 20, {
+                speed: 250,
+                life: 1500,
+                size: 3
+            });
+        }
         
         // Update UI
         document.getElementById('finalLength').textContent = Math.floor(player.length);
