@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0f0f0f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Karinca - Epic Snake Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+    <canvas id="miniMapCanvas"></canvas>
+    
+    <!-- HUD -->
+    <div id="hud" class="hud">
+        <div class="hud-left">
+            <div class="hud-item">Level: <span id="levelDisplay">1</span></div>
+            <div class="hud-item">Goal: <span id="goalDisplay">50</span></div>
+            <div class="hud-item">Length: <span id="lengthDisplay">5</span></div>
+            <div class="hud-item">Lives: <span id="livesDisplay">3</span></div>
+        </div>
+        <div class="hud-center">
+            <div id="powerUpTimers" class="power-up-timers"></div>
+        </div>
+        <div class="hud-right">
+            <button id="settingsBtn" class="hud-btn">⚙️</button>
+            <button id="pauseBtn" class="hud-btn">⏸️</button>
+        </div>
+    </div>
+    
+    <!-- Leaderboard -->
+    <div id="leaderboard" class="leaderboard">
+        <h3>Top Players</h3>
+        <ol id="leaderboardList"></ol>
+    </div>
+    
+    <!-- Mini-map Container -->
+    <div id="miniMapContainer" class="mini-map-container">
+        <canvas id="miniMap"></canvas>
+    </div>
+    
+    <!-- Mobile Controls -->
+    <div id="mobileControls" class="mobile-controls">
+        <div id="joystick" class="joystick">
+            <div id="joystickKnob" class="joystick-knob"></div>
+        </div>
+        <button id="sprintBtn" class="sprint-btn">🏃</button>
+    </div>
+    
+    <!-- Overlays -->
+    
+    <!-- Start Screen -->
+    <div id="startScreen" class="overlay">
+        <div class="overlay-content">
+            <h1>Karinca</h1>
+            <h2>Epic Snake Game</h2>
+            <p>Grow your ant, collect food, avoid enemies!</p>
+            <button id="startBtn" class="main-btn">Start Game</button>
+            <button id="achievementsBtn" class="secondary-btn">Achievements</button>
+            <button id="upgradesBtn" class="secondary-btn">Upgrades</button>
+            <button id="settingsStartBtn" class="secondary-btn">Settings</button>
+        </div>
+    </div>
+    
+    <!-- Pause Screen -->
+    <div id="pauseScreen" class="overlay hidden">
+        <div class="overlay-content">
+            <h2>Game Paused</h2>
+            <button id="resumeBtn" class="main-btn">Resume</button>
+            <button id="settingsPauseBtn" class="secondary-btn">Settings</button>
+            <button id="mainMenuBtn" class="secondary-btn">Main Menu</button>
+        </div>
+    </div>
+    
+    <!-- Level Complete Screen -->
+    <div id="levelCompleteScreen" class="overlay hidden">
+        <div class="overlay-content">
+            <h2>Level Complete!</h2>
+            <div id="levelStats" class="stats">
+                <p>Final Length: <span id="finalLength">0</span></p>
+                <p>XP Earned: <span id="xpEarned">0</span></p>
+                <p>Time: <span id="levelTime">0s</span></p>
+            </div>
+            <button id="nextLevelBtn" class="main-btn">Next Level</button>
+            <button id="upgradesCompleteBtn" class="secondary-btn">Upgrades</button>
+        </div>
+    </div>
+    
+    <!-- Game Over Screen -->
+    <div id="gameOverScreen" class="overlay hidden">
+        <div class="overlay-content">
+            <h2>Game Over</h2>
+            <div id="gameOverStats" class="stats">
+                <p>Level Reached: <span id="maxLevel">1</span></p>
+                <p>Total XP: <span id="totalXP">0</span></p>
+                <p>Best Length: <span id="bestLength">5</span></p>
+            </div>
+            <button id="retryBtn" class="main-btn">Try Again</button>
+            <button id="upgradesGameOverBtn" class="secondary-btn">Upgrades</button>
+            <button id="mainMenuGameOverBtn" class="secondary-btn">Main Menu</button>
+        </div>
+    </div>
+    
+    <!-- Game Complete Screen -->
+    <div id="gameCompleteScreen" class="overlay hidden">
+        <div class="overlay-content">
+            <h1>🎉 Congratulations! 🎉</h1>
+            <h2>You completed all 99 levels!</h2>
+            <div id="finalStats" class="stats">
+                <p>Total XP Earned: <span id="finalTotalXP">0</span></p>
+                <p>Achievements Unlocked: <span id="finalAchievements">0</span></p>
+            </div>
+            <button id="playAgainBtn" class="main-btn">Play Again</button>
+            <button id="achievementsFinalBtn" class="secondary-btn">View Achievements</button>
+        </div>
+    </div>
+    
+    <!-- Achievements Screen -->
+    <div id="achievementsScreen" class="overlay hidden">
+        <div class="overlay-content">
+            <h2>Achievements</h2>
+            <div id="achievementsList" class="achievements-list"></div>
+            <button id="closeAchievementsBtn" class="secondary-btn">Close</button>
+        </div>
+    </div>
+    
+    <!-- Upgrades Screen -->
+    <div id="upgradesScreen" class="overlay hidden">
+        <div class="overlay-content">
+            <h2>Upgrades</h2>
+            <div class="upgrade-currency">XP: <span id="currentXP">0</span></div>
+            <div id="upgradesList" class="upgrades-list"></div>
+            <button id="closeUpgradesBtn" class="secondary-btn">Close</button>
+        </div>
+    </div>
+    
+    <!-- Settings Screen -->
+    <div id="settingsScreen" class="overlay hidden">
+        <div class="overlay-content">
+            <h2>Settings</h2>
+            <div class="settings-grid">
+                <label for="audioVolume">Audio Volume:</label>
+                <input type="range" id="audioVolume" min="0" max="100" value="50">
+                
+                <label for="particleDensity">Particle Density:</label>
+                <select id="particleDensity">
+                    <option value="low">Low</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="high">High</option>
+                </select>
+                
+                <label for="colorTheme">Color Theme:</label>
+                <select id="colorTheme">
+                    <option value="normal" selected>Normal</option>
+                    <option value="colorblind">Colorblind Friendly</option>
+                </select>
+                
+                <label for="lowGraphics">Low Graphics Mode:</label>
+                <input type="checkbox" id="lowGraphics">
+                
+                <label for="mouseSensitivity">Mouse Sensitivity:</label>
+                <input type="range" id="mouseSensitivity" min="0.1" max="3" step="0.1" value="1">
+            </div>
+            <button id="closeSettingsBtn" class="secondary-btn">Close</button>
+        </div>
+    </div>
+    
+    <!-- Achievement Toast -->
+    <div id="achievementToast" class="achievement-toast hidden">
+        <div class="toast-content">
+            <span class="toast-icon">🏆</span>
+            <div class="toast-text">
+                <div class="toast-title">Achievement Unlocked!</div>
+                <div id="toastAchievement" class="toast-subtitle"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="game.js"></script>
+</body>
+</html>
